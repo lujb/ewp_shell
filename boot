@@ -18,7 +18,6 @@ function die() {
 # self-extracting
 cwd=$(cd $(dirname $0); pwd)
 thisfilepath=$cwd/$(basename $0)
-echo "thisfilepath:$thisfilepath"
 cd $home && sed -e '1,/^ESCRIPT$/d' "$thisfilepath" | tar xzf - && cd $cwd || die 170
 
 # check debug flag
@@ -33,6 +32,11 @@ ps -ef | grep '\-[p]rogname erl' > $home/all_nodes
 $home/kernel checkvm $extra_flag
 
 #
+if [ ! -f $home/ewp_nodes ]; then
+	echo "No running ewp nodes."
+	exit 180
+fi
+
 nodes=( $( cat $home/ewp_nodes ) )
 if [ $((${#nodes[@]})) -gt 0 ]; then
 	echo "current running ewp nodes:"

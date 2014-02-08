@@ -8,6 +8,8 @@ main([Action | Options]) ->
 		Options2 = check_debug_flag(Options),
 		O = process_options(Options2, []),
 		% Execute Action
+		debug("exec Action: ~p", [Action]),
+		debug("with Args: ~p", [O]),
 		case Action of
 			"checkvm" -> check_vm();
 			"inject" -> inject(O);
@@ -80,13 +82,17 @@ check_vm() ->
 	{ok, [[Home]]} = init:get_argument(home),
 	case file:open(filename:join([Home, ?ALL_NODES]), [read]) of
 		{ok, Fd} ->
-			EWPNodes = check_vm_1(Fd, file:read_line(Fd), []),
-			%%save ewp nodes
-			Str = lists:foldl(
-				fun(N, Acc)-> ["\n", N | Acc] end,
-				[], EWPNodes),
-			Str2 = lists:concat(tl(Str)),
-			ok = file:write_file(filename:join([Home, ?EWP_NODES]), Str2);
+			case check_vm_1(Fd, file:read_line(Fd), []) of
+				[] ->
+					throw(abort);
+				EWPNodes ->
+					%%save ewp nodes
+					Str = lists:foldl(
+						fun(N, Acc)-> ["\n", N | Acc] end,
+						[], EWPNodes)	,
+					Str2 = lists:concat(tl(Str)),
+					ok = file:write_file(filename:join([Home, ?EWP_NODES]), Str2)
+			end;
 		{error, OpenError} ->
 			err("failed to open tmp file, for:~p", [OpenError]),
 			throw(abort)
