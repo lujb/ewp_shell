@@ -1,0 +1,5 @@
+#!/bin/bash
+
+cp boot ewp_shell
+tar czf - kernel >> ewp_shell 
+echo "Success!"

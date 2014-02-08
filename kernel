@@ -1,0 +1,162 @@
+#!/usr/bin/env escript
+%% -*- erlang -*-
+%%! -smp enable -sname beam_injector -setcookie ewpcool
+-define(ALL_NODES, ".ewp/ewp_shell.swp/all_nodes").
+-define(EWP_NODES, ".ewp/ewp_shell.swp/ewp_nodes").
+main([Action | Options]) ->
+	try
+		Options2 = check_debug_flag(Options),
+		O = process_options(Options2, []),
+		% Execute Action
+		case Action of
+			"checkvm" -> check_vm();
+			"inject" -> inject(O);
+			X -> err("unknown action:~p.", [X]), throw(abort)
+		end
+	catch
+    	throw:abort ->
+    		io:format("Abort!~n");
+        Type:Why ->
+        	debug("trace: ~p.", [erlang:get_stacktrace()]),
+        	err("type is:~p, reason is:~p.", [Type, Why]),
+            usage()
+    end;
+
+main(_) ->
+    usage().
+
+
+process_options([], Acc) ->
+	Acc;
+process_options(["--node", Node | Rest], Acc) ->
+	process_options(Rest, [{node, list_to_atom(Node)}|Acc]);
+process_options(["--beam", BeamPath | Rest], Acc) ->
+	process_options(Rest, [{beampath, BeamPath}|Acc]);
+process_options([X|_Rest], _Acc) ->
+	err("unknown option: ~p.", [X]),
+	throw(abort).
+
+inject(Options) ->
+	BeamPath = o(beampath, Options),
+	Node = o(node, Options),
+    ModName = list_to_atom(filename:basename(BeamPath, ".beam")),
+    case filelib:is_dir(BeamPath) of
+    	true ->
+    		Beams = filelib:wildcard(filename:join([BeamPath, "*/*.beam"])),
+    		debug("beams to inject: ~p", [Beams]),
+    		[inject_one_beam(Node, X, filename:basename(X,".beam")) || X <- Beams];
+    	false ->
+    		inject_one_beam(Node, BeamPath, ModName)
+    end.
+
+inject_one_beam(Node, BeamPath, ModName) when is_list(ModName) ->
+	inject_one_beam(Node, BeamPath, list_to_atom(ModName));
+inject_one_beam(Node, BeamPath, ModName) ->
+    debug("inject beam:~p on node:~p as:~p.", [BeamPath, Node, ModName]),
+    case file:read_file(BeamPath) of
+    	{ok, BeamBin} ->
+    		case code:load_binary(ModName, BeamPath, BeamBin) of
+    			{module, ModName} ->
+    				debug("file can be loaded."),
+    				do_inject(Node, ModName, BeamBin);
+    			{error, LoadError} ->
+    				err("file cannot be loaded, for:~p", [LoadError]),
+    				throw(abort)
+    		end;
+    	_ ->
+    		err("failed to read beam binary.")
+    end.
+
+do_inject(Node, Mod, Bin) ->
+	case rpc:call(Node, code, load_binary, [Mod, "injected", Bin]) of
+		{module, Mod} ->
+			debug("inject sucessfully.");
+		{error, LoadError} ->
+			err("beam cannot be injected, for:~p", [LoadError]),
+			throw(abort)
+	end.
+
+check_vm() ->
+	{ok, [[Home]]} = init:get_argument(home),
+	case file:open(filename:join([Home, ?ALL_NODES]), [read]) of
+		{ok, Fd} ->
+			EWPNodes = check_vm_1(Fd, file:read_line(Fd), []),
+			%%save ewp nodes
+			Str = lists:foldl(
+				fun(N, Acc)-> ["\n", N | Acc] end,
+				[], EWPNodes),
+			Str2 = lists:concat(tl(Str)),
+			ok = file:write_file(filename:join([Home, ?EWP_NODES]), Str2);
+		{error, OpenError} ->
+			err("failed to open tmp file, for:~p", [OpenError]),
+			throw(abort)
+	end.
+
+check_vm_1(Fd, eof, Acc) ->
+	file:close(Fd),
+	Acc;
+check_vm_1(Fd, {error, ReadLineError}, _Acc) ->
+	file:close(Fd),
+	err("failed to read line, for:~p", [ReadLineError]),
+	throw(abort);
+check_vm_1(Fd, {ok, Data}, Acc) ->
+	Acc2 = 
+		case parse_vm(Data) of
+			{ok, EWPNode} -> [EWPNode | Acc];
+			_ -> Acc
+		end,
+	check_vm_1(Fd, file:read_line(Fd), Acc2).
+
+parse_vm(Data) when is_list(Data) ->
+	debug("parse line:~p", [Data]),
+	case re:run(Data, ".*?\\s-(s?name)\\s(.*?)\\s", [{capture, [1,2], list}]) of
+		{match, [Type, Name]} ->
+			case ping(Type, Name) of
+				{pong, EWPNode} ->
+					debug("find: ~p", [EWPNode]),
+					{ok, EWPNode};
+				{pang, _} ->
+					not_found
+			end;
+		_ ->
+			pass
+	end.
+
+ping("sname", Name) ->
+	{ok, HostName} = inet:gethostname(),
+	Node = list_to_atom(lists:concat([Name,'@',HostName])),
+	{net_adm:ping(Node), Node}.
+
+o(Key, PropLists) ->
+	case proplists:get_value(Key, PropLists) of
+		undefined -> err("~p is needed.", [Key]),throw(abort);
+		X -> X
+	end.
+
+check_debug_flag(Options) when is_list(Options) ->
+	case lists:member("-debug", Options) of
+		true ->
+			erlang:put(debug, defined),
+			lists:filter(
+				fun(X) when X /= "-debug" -> true;
+				   (_) -> false
+				end, Options);
+		false -> 
+			Options
+	end.
+
+usage() ->
+    io:format("usage: beam_injector beamfile\n"),
+    halt(1).
+
+debug(F) ->
+	debug(F, []).
+debug(F, A) ->
+	case erlang:get(debug) of
+		defined ->
+			io:format("[DEBUG]\t"++F++"\n", A);
+		_ ->
+			pass
+	end.
+err(F) -> err(F, []).
+err(F, A) -> io:format("[ERROR]\t"++F++"\n", A).
