@@ -4,10 +4,17 @@ ewp_shell
 
 ### 动态更新ewp内存中的beam ###
 make完之后会生成名为ewp_shell脚本，直接使用这一个脚本就可以了，操作如下：
+
 * `./ewp_shell`启动，或者`./ewp_shell -debug`以调试模式启动；
 * 脚本会首先列出当前运行的ewp node，输入运行中的ewp node的序号即可；
 * 脚本接着会要求输入待加载的beam文件名或压缩包(支持zip和tar.gz格式)，如：path/to/file.beam或path/to/file.tar.gz；
 * 自动导入beam，脚本结束；
+
+假设替换的beam名为test.beam，则在erlang shell下运行`code:is_loaded(test)`，如果导入成功，则会返回：
+```erlang
+{file,"injected_by_ewpshell@20140210165730"}
+```
+表示test.beam在20140210165730这一时刻由ewp_shell注入。
 
 ### Features in Future ###
 * ewp节点探测；
