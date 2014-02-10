@@ -96,12 +96,19 @@ else
 	exit 182
 fi
 
+kernel_exit=$?
+
 # clear
 $debug "clear template files."
 rm -rf $home/*
 
 # done
-echo "Done!"
+if [ $kernel_exit -eq 0 ]; then
+	echo "Done!"
+else
+	echo "exit: $kernel_exit"
+fi
+
 exit 0
 
 # kernel

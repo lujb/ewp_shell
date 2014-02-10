@@ -17,11 +17,13 @@ main([Action | Options]) ->
 		end
 	catch
     	throw:abort ->
-    		io:format("Abort!~n");
+    		io:format("Abort!~n"),
+    		halt(190);
         Type:Why ->
         	debug("trace: ~p.", [erlang:get_stacktrace()]),
         	err("type is:~p, reason is:~p.", [Type, Why]),
-            usage()
+            usage(),
+    		halt(191)
     end;
 
 main(_) ->
@@ -71,6 +73,18 @@ inject_one_beam(Node, BeamPath, ModName) ->
 
 do_inject(Node, Mod, Bin) ->
 	Tag = lists:concat(["injected_by_ewpshell@", timestamp()]),
+	case rpc:call(Node, code, which, [Mod]) of
+		non_existing ->
+			pass;
+		OrigPath ->
+			case rpc:call(Node, file, write_file, [OrigPath, Bin]) of
+				ok ->
+					debug("copy beam to OrigPath:~p sucessfully.", [OrigPath]);
+				{error, CopyError} ->
+					err("failed to copy beam:~p, for:~p.", [Mod, CopyError]),
+					throw(abort)
+			end
+	end,
 	case rpc:call(Node, code, load_binary, [Mod, Tag, Bin]) of
 		{module, Mod} ->
 			debug("inject sucessfully.");
