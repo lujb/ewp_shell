@@ -38,30 +38,32 @@ if [ ! -f $home/ewp_nodes ]; then
 fi
 
 nodes=( $( cat $home/ewp_nodes ) )
-if [ $((${#nodes[@]})) -gt 0 ]; then
+if [ $((${#nodes[@]})) -eq 1 ]; then
+	echo "Only one ewp node is running: ${nodes[$((0))]}"
+	selected_node=${nodes[$((0))]}
+elif [ $((${#nodes[@]})) -gt 1 ]; then
 	echo "current running ewp nodes:"
+	# show ewp nodes list
+	echo "--------------------------"
+	for i in $(seq 0 $((${#nodes[@]} - 1))); do
+		echo "$(($i + 1))) ${nodes[$i]}"
+	done
+	# choose an ewp node
+	echo -n "choose an ewp node:"
+	read i
+	selected_node=${nodes[$(($i - 1))]}
+	echo
+	if [ -z $selected_node ]; then
+		echo "invalid input."
+		exit 181
+	else
+		echo "You choose $selected_node."
+	fi
 else
 	echo "No running ewp nodes."
 	exit 180
 fi
 
-#
-echo "--------------------------"
-for i in $(seq 0 $((${#nodes[@]} - 1))); do
-	echo "$(($i + 1))) ${nodes[$i]}"
-done
-
-#
-echo -n "choose an ewp node:"
-read i
-selected_node=${nodes[$(($i - 1))]}
-echo
-if [ -z $selected_node ]; then
-	echo "invalid input."
-	exit 181
-else
-	echo "You chose $selected_node."
-fi
 
 #
 echo -n "specify beam path to inject:"

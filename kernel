@@ -70,7 +70,8 @@ inject_one_beam(Node, BeamPath, ModName) ->
     end.
 
 do_inject(Node, Mod, Bin) ->
-	case rpc:call(Node, code, load_binary, [Mod, "injected", Bin]) of
+	Tag = lists:concat(["injected_by_ewpshell@", timestamp()]),
+	case rpc:call(Node, code, load_binary, [Mod, Tag, Bin]) of
 		{module, Mod} ->
 			debug("inject sucessfully.");
 		{error, LoadError} ->
@@ -166,3 +167,25 @@ debug(F, A) ->
 	end.
 err(F) -> err(F, []).
 err(F, A) -> io:format("[ERROR]\t"++F++"\n", A).
+
+
+
+
+timestamp() ->
+    {{Y,M,D}, {H,Mi,S}} = calendar:local_time(),
+    fill_zero(Y, 4)
+        ++ fill_zero(M, 2)
+        ++ fill_zero(D, 2)
+        ++ fill_zero(H, 2)
+        ++ fill_zero(Mi, 2)
+        ++ fill_zero(S, 2).
+
+fill_zero(N, Width) ->
+    left_fill(N, Width, $0).
+
+left_fill(N, Width, Fill) when is_integer(N) ->
+    left_fill(integer_to_list(N), Width, Fill);
+left_fill(N, Width, _Fill) when length(N) >= Width ->
+    N;
+left_fill(N, Width, Fill) ->
+    left_fill([Fill|N], Width, Fill).
