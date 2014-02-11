@@ -2,19 +2,32 @@ ewp_shell
 =========
 管理ewp运行时的shell环境，提供开箱即用的体验(LOL)。
 
-### 动态更新ewp内存中的beam ###
-make完之后会生成名为ewp_shell脚本，直接使用这一个脚本就可以了，操作如下：
-
-* `./ewp_shell`启动，或者`./ewp_shell -debug`以调试模式启动；
-* 脚本会首先列出当前运行的ewp node，输入运行中的ewp node的序号即可；
-* 脚本接着会要求输入待加载的beam文件名或压缩包(支持zip和tar.gz格式)，如：path/to/file.beam或path/to/file.tar.gz；
-* 自动导入beam，脚本结束；
-
-假设替换的beam名为test.beam，则在erlang shell下运行`code:is_loaded(test)`，如果导入成功，则会返回：
-```erlang
-{file,"injected_by_ewpshell@20140210165730"}
+### 脚本生成 ###
+在*nix环境下，make直接生成ewp_shell脚本:
+```sh
+make
 ```
-表示test.beam在20140210165730这一时刻由ewp_shell注入。
+所有的功能都包含在ewp_shell脚本中，直接使用这个脚本即可。
+
+正常启动方式如下：
+```sh
+./ewp_shell
+```
+以调试方式启动如下：
+```sh
+./ewp_shell -debug
+```
+
+### 动态更新ewp内存中的beam ###
+当前只支持向sname的ewp节点导入beam。
+
+* 运行脚本；
+* 如果当前运行有多个ewp节点，脚本将列出所有节点，并要求用户选择一个节点；
+* 接着脚本会列出所有ebin路径，并要求用户选择一个ebin路径用来保存后续导入新增的beam(不是新增的则直接覆盖)；
+* 脚本接着会要求输入待加载的beam文件名或压缩包(支持zip和tar.gz格式)，如：path/to/file.beam或path/to/file.tar.gz；
+* 自动导入beam，回显统计数量；
+* 脚本结束；
+
 
 ### Features in Future ###
 * ewp节点探测；
