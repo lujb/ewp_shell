@@ -28,6 +28,35 @@ make
 * 自动导入beam，回显统计数量；
 * 脚本结束；
 
+示例：
+```
+kingbo@caught:~/src/gitrepo/ewp_shell$ ./ewp_shell 
+current running ewp nodes:
+--------------------------
+1) ebank@caught
+2) ewp@caught
+选择一个将导入beam的ewp节点(输入数字1~2): 1
+
+You choose ebank@caught.
+
+当前在节点ebank@caught中的ebin路径有:
+--------------------------
+1) /usr/local/lib/yaws/examples/ebin
+2) /home/kingbo/src/rytong/emp.proj/ebank/../ewp/ebin
+3) .
+4) /usr/local/lib/yaws/ebin
+5) /home/kingbo/src/rytong/emp.proj/ewp/ebin
+6) /home/kingbo/src/rytong/emp.proj/ebank/ebin
+选择一个ebin路径用以存放新增的beam(输入数字1~6): 6
+
+You choose /home/kingbo/src/rytong/emp.proj/ebank/ebin.
+
+请输入待导入的beam文件路径(支持单个beam文件或zip/tgz压缩文件): /home/kingbo/src/rytong/emp.proj/ebank/tmp/tmp.zip
+[INFO] 没有新增的beam.
+[INFO] 替换以下beam: abc.beam ebank_ass.beam
+Done!
+```
+
 
 ### Features in Future ###
 * ewp节点探测；
