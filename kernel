@@ -3,6 +3,9 @@
 %%! -smp enable -sname beam_injector -setcookie ewpcool
 -define(ALL_NODES, ".ewp/ewp_shell.swp/all_nodes").
 -define(EWP_NODES, ".ewp/ewp_shell.swp/ewp_nodes").
+-define(USER_EBIN, ".ewp/ewp_shell.swp/user_ebin").
+-define(NEW_BEAM, ".ewp/ewp_shell.swp/new_beam").
+-define(REPLACE_BEAM, ".ewp/ewp_shell.swp/replace_beam").
 main([Action | Options]) ->
 	try
 		Options2 = check_debug_flag(Options),
@@ -12,6 +15,7 @@ main([Action | Options]) ->
 		debug("with Args: ~p", [O]),
 		case Action of
 			"checkvm" -> check_vm();
+			"userebin" -> get_user_ebin_path(O);
 			"inject" -> inject(O);
 			X -> err("unknown action:~p.", [X]), throw(abort)
 		end
@@ -22,7 +26,7 @@ main([Action | Options]) ->
         Type:Why ->
         	debug("trace: ~p.", [erlang:get_stacktrace()]),
         	err("type is:~p, reason is:~p.", [Type, Why]),
-            usage(),
+            % usage(),
     		halt(191)
     end;
 
@@ -36,6 +40,8 @@ process_options(["--node", Node | Rest], Acc) ->
 	process_options(Rest, [{node, list_to_atom(Node)}|Acc]);
 process_options(["--beam", BeamPath | Rest], Acc) ->
 	process_options(Rest, [{beampath, BeamPath}|Acc]);
+process_options(["--ebin", EbinPath| Rest], Acc) ->
+	process_options(Rest, [{ebin, EbinPath}|Acc]);
 process_options([X|_Rest], _Acc) ->
 	err("unknown option: ~p.", [X]),
 	throw(abort).
@@ -43,26 +49,27 @@ process_options([X|_Rest], _Acc) ->
 inject(Options) ->
 	BeamPath = o(beampath, Options),
 	Node = o(node, Options),
+	Ebin = o(ebin, Options),
     ModName = list_to_atom(filename:basename(BeamPath, ".beam")),
     case filelib:is_dir(BeamPath) of
     	true ->
-    		Beams = filelib:wildcard(filename:join([BeamPath, "*/*.beam"])),
+    		Beams = filelib:wildcard(filename:join([BeamPath, "**/**/*.beam"])),
     		debug("beams to inject: ~p", [Beams]),
-    		[inject_one_beam(Node, X, filename:basename(X,".beam")) || X <- Beams];
+    		[inject_one_beam(Node, Ebin, X, filename:basename(X,".beam")) || X <- Beams];
     	false ->
-    		inject_one_beam(Node, BeamPath, ModName)
+    		inject_one_beam(Node, Ebin, BeamPath, ModName)
     end.
 
-inject_one_beam(Node, BeamPath, ModName) when is_list(ModName) ->
-	inject_one_beam(Node, BeamPath, list_to_atom(ModName));
-inject_one_beam(Node, BeamPath, ModName) ->
+inject_one_beam(Node, Ebin, BeamPath, ModName) when is_list(ModName) ->
+	inject_one_beam(Node, Ebin, BeamPath, list_to_atom(ModName));
+inject_one_beam(Node, Ebin, BeamPath, ModName) ->
     debug("inject beam:~p on node:~p as:~p.", [BeamPath, Node, ModName]),
     case file:read_file(BeamPath) of
     	{ok, BeamBin} ->
     		case code:load_binary(ModName, BeamPath, BeamBin) of
     			{module, ModName} ->
     				debug("file can be loaded."),
-    				do_inject(Node, ModName, BeamBin);
+    				do_inject(Node, Ebin, ModName, BeamBin);
     			{error, LoadError} ->
     				err("file cannot be loaded, for:~p", [LoadError]),
     				throw(abort)
@@ -71,27 +78,65 @@ inject_one_beam(Node, BeamPath, ModName) ->
     		err("failed to read beam binary.")
     end.
 
-do_inject(Node, Mod, Bin) ->
-	Tag = lists:concat(["injected_by_ewpshell@", timestamp()]),
-	case rpc:call(Node, code, which, [Mod]) of
-		non_existing ->
-			pass;
-		OrigPath ->
-			case rpc:call(Node, file, write_file, [OrigPath, Bin]) of
-				ok ->
-					debug("copy beam to OrigPath:~p sucessfully.", [OrigPath]);
-				{error, CopyError} ->
-					err("failed to copy beam:~p, for:~p.", [Mod, CopyError]),
-					throw(abort)
-			end
+do_inject(Node, Ebin, Mod, Bin) ->
+	% Tag = lists:concat(["injected_by_ewpshell@", timestamp()]),
+	{TargetPath, Type} = 
+		case rpc:call(Node, code, which, [Mod]) of
+			non_existing ->
+				case Ebin of
+					"undefined" ->
+						warn("*Ram_copy* for newly added beam:~p.", [Mod]),
+						{"undefined", new};
+					_ ->
+						debug("*Disc_copy* for newly aded beam:~p.", [Mod]),
+						{filename:join([Ebin, lists:concat([Mod, ".beam"])]), new}
+				end;
+			OrigPath ->
+				debug("*Disc_copy* for old beam:~p.", [Mod]),
+				{OrigPath, replace}
+		end,
+	write_beam(Node, TargetPath, Mod, Bin),
+	case rpc:call(Node, code, soft_purge, [Mod]) of
+		true ->
+			debug("success to soft purge the old beam(~p) in RAM.", [Mod]);
+		false ->
+			err("failed to soft purge the old beam(~p) in RAM.", [Mod])
 	end,
-	case rpc:call(Node, code, load_binary, [Mod, Tag, Bin]) of
+	case rpc:call(Node, code, load_binary, [Mod, TargetPath, Bin]) of
 		{module, Mod} ->
+			%% save result
+			{ok, [[Home]]} = init:get_argument(home),
+			ResultPath=
+				case Type of
+					new -> filename:join([Home, ?NEW_BEAM]);
+					replace -> filename:join([Home, ?REPLACE_BEAM])
+				end,
+			ok = file:write_file(ResultPath, lists:concat([Mod, ".beam "]), [append]),
 			debug("inject sucessfully.");
 		{error, LoadError} ->
 			err("beam cannot be injected, for:~p", [LoadError]),
 			throw(abort)
 	end.
+
+get_user_ebin_path(Options) ->
+	Node = o(node, Options),
+	AllPath = rpc:call(Node, code, get_path, []),
+	LibPath = rpc:call(Node, code, lib_dir, []),
+	Len = length(LibPath),
+	UserEbin = lists:filter(
+		fun(X)->
+			case string:substr(X, 1, Len) of 
+				LibPath -> false;
+				_ -> true
+			end
+		end, AllPath),
+	%%save user ebin path 
+	Str = lists:foldl(
+		fun(N, Acc)-> ["\n", N | Acc] end,
+		[], UserEbin)	,
+	Str2 = lists:concat(tl(Str)),
+	{ok, [[Home]]} = init:get_argument(home),
+	ok = file:write_file(filename:join([Home, ?USER_EBIN]), Str2).
 
 check_vm() ->
 	{ok, [[Home]]} = init:get_argument(home),
@@ -166,8 +211,18 @@ check_debug_flag(Options) when is_list(Options) ->
 			Options
 	end.
 
+write_beam(Node, Path, Mod, Bin) ->
+	debug("copy beam(~p) to path:~p.", [Mod, Path]),
+	case rpc:call(Node, file, write_file, [Path, Bin]) of
+		ok ->
+			debug("copy beam to path:~p sucessfully.", [Path]);
+		{error, CopyError} ->
+			err("failed to copy beam:~p, for:~p.", [Mod, CopyError]),
+			throw(abort)
+	end.
+
 usage() ->
-    io:format("usage: beam_injector beamfile\n"),
+    io:format("usage: kernel ACTION [Options]\n"),
     halt(1).
 
 debug(F) ->
@@ -179,27 +234,29 @@ debug(F, A) ->
 		_ ->
 			pass
 	end.
+% warn(F) -> warn(F, []).
+warn(F, A) -> io:format("[WARNING]\t"++F++"\n", A).
 err(F) -> err(F, []).
 err(F, A) -> io:format("[ERROR]\t"++F++"\n", A).
 
 
 
 
-timestamp() ->
-    {{Y,M,D}, {H,Mi,S}} = calendar:local_time(),
-    fill_zero(Y, 4)
-        ++ fill_zero(M, 2)
-        ++ fill_zero(D, 2)
-        ++ fill_zero(H, 2)
-        ++ fill_zero(Mi, 2)
-        ++ fill_zero(S, 2).
+% timestamp() ->
+%     {{Y,M,D}, {H,Mi,S}} = calendar:local_time(),
+%     fill_zero(Y, 4)
+%         ++ fill_zero(M, 2)
+%         ++ fill_zero(D, 2)
+%         ++ fill_zero(H, 2)
+%         ++ fill_zero(Mi, 2)
+%         ++ fill_zero(S, 2).
 
-fill_zero(N, Width) ->
-    left_fill(N, Width, $0).
+% fill_zero(N, Width) ->
+%     left_fill(N, Width, $0).
 
-left_fill(N, Width, Fill) when is_integer(N) ->
-    left_fill(integer_to_list(N), Width, Fill);
-left_fill(N, Width, _Fill) when length(N) >= Width ->
-    N;
-left_fill(N, Width, Fill) ->
-    left_fill([Fill|N], Width, Fill).
+% left_fill(N, Width, Fill) when is_integer(N) ->
+%     left_fill(integer_to_list(N), Width, Fill);
+% left_fill(N, Width, _Fill) when length(N) >= Width ->
+%     N;
+% left_fill(N, Width, Fill) ->
+%     left_fill([Fill|N], Width, Fill).
