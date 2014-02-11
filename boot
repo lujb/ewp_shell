@@ -55,7 +55,7 @@ elif [ $((${#nodes[@]})) -gt 1 ]; then
 
 	if [ $i -eq $i 2>/dev/null ] && [ $i -ge 1 ] && [ $i -le $((${#nodes[@]})) ]; then
 		selected_node=${nodes[$(($i - 1))]}
-		echo "You choose $selected_node."
+		echo "You choose $selected_node."; echo
 	else 
 		echo "invalid input."
 		exit 181
@@ -78,21 +78,20 @@ else
 		echo "新增的beam将会写入到此ebin路径: ${ebin[$((0))]}"
 		selected_ebin=${ebin[$((0))]}
 	elif [ $((${#ebin[@]})) -gt 1 ]; then
-		echo
 		echo "当前在节点$selected_node中的ebin路径有:"
 		# show ebin list
 		echo "--------------------------"
 		for i in $(seq 0 $((${#ebin[@]} - 1))); do
 			echo "$(($i + 1))) ${ebin[$i]}"
 		done
-		
+
 		# choose an ebin path
 		echo -n "选择一个ebin路径用以存放新增的beam(输入数字1~$((${#ebin[@]}))): "
 		read i; echo
 
 		if [ $i -eq $i 2>/dev/null ] && [ $i -ge 1 ] && [ $i -le $((${#ebin[@]})) ]; then
 			selected_ebin=${ebin[$(($i - 1))]}
-			echo "You choose $selected_ebin."
+			echo "You choose $selected_ebin."; echo
 		else
 			echo "invalid input"
 			exit 181
@@ -105,7 +104,7 @@ fi
 
 
 #
-echo -n "请输入待导入的beam文件路径(支持单个beam文件或zip/tgz压缩文件):"
+echo -n "请输入待导入的beam文件路径(支持单个beam文件或zip/tgz压缩文件): "
 read beam
 if [ ! -z $beam ] && [ -f $beam ]; then
 	filename=$(basename "$beam")
