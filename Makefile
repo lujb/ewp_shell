@@ -1,6 +1,9 @@
 all:clean
 	./gen
 
+plain:clean
+	./gen plain
+
 run:all
 	./ewp_shell
 

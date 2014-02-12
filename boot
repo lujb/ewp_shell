@@ -19,6 +19,7 @@ function die() {
 function run_kernel() {
 	$debug "run_kernel: $*" 
 	cp $home/kernel $home/kernel.run && \
+	chmod +x $home/kernel.run && \
 	sed -i "s/@TYPE@/$1/g" $home/kernel.run && \
 	sed -i "s/@NODE@/$2/g" $home/kernel.run && \
 	shift; shift
@@ -36,7 +37,12 @@ function run_kernel() {
 # self-extracting
 cwd=$(cd $(dirname $0); pwd)
 thisfilepath=$cwd/$(basename $0)
-cd $home && sed -e '1,/^ESCRIPT$/d' "$thisfilepath" | tar xzf - && cd $cwd || die 170
+kernel_type=@KERNEL_TYPE@
+if [ $kernel_type = "plain" ]; then
+	cd $home && sed -e '1,/^ESCRIPT$/d' "$thisfilepath" > kernel && cd $cwd || die 170
+else
+	cd $home && sed -e '1,/^ESCRIPT$/d' "$thisfilepath" | tar xzf - && cd $cwd || die 170
+fi
 
 # check debug flag
 debug=:
@@ -100,7 +106,7 @@ elif [ $((${#nodes[@]})) -gt 1 ]; then
 		selected_node=${array[1]}
 		selected_type=${array[0]}
 		selected_host=${selected_node##*@}
-		echo "You choose $selected_node, type:$selected_type."; echo
+		echo "You choose $selected_node."; echo
 	else 
 		echo "invalid input."
 		exit 181
@@ -182,16 +188,16 @@ fi
 # check result
 kernel_exit=$?
 if [ -f $home/new_beam ]; then
-	echo -n "[INFO] 新增以下beam: "
+	echo -n "[INFO] 新增了以下beam: "
 	echo $(cat $home/new_beam)
 else
-	echo "[INFO] 没有新增的beam."
+	echo "[INFO] 没有新增的beam"
 fi
 if [ -f $home/replace_beam ]; then
-	echo -n "[INFO] 替换以下beam: "
+	echo -n "[INFO] 替换了以下beam: "
 	echo $(cat $home/replace_beam)
 else
-	echo "[INFO] 没有可替换的beam."
+	echo "[INFO] 没有可替换的beam"
 fi
 
 # clear

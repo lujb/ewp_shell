@@ -1,5 +1,16 @@
 #!/bin/bash
 
 cp boot ewp_shell
-tar czf - kernel >> ewp_shell 
-echo "Success!"
+
+
+if [ ! -z $1 ] && [ $1 = "plain" ]; then
+	sed -i "s/@KERNEL_TYPE@/plain/g" ./ewp_shell && \
+	cat kernel >> ewp_shell  && \
+	echo "Success!" || \
+	echo "Failed!"
+else
+	sed -i "s/@KERNEL_TYPE@/gzip/g" ./ewp_shell && \
+	tar czf - kernel >> ewp_shell  && \
+	echo "Success!" || \
+	echo "Failed!"
+fi
