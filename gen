@@ -4,14 +4,17 @@ cp boot ewp_shell
 
 
 if [ ! -z $1 ] && [ $1 = "plain" ]; then
-	sed -i "s/@KERNEL_TYPE@/plain/g" ./ewp_shell && \
+	# sed -i "s/@KERNEL_TYPE@/plain/g" ./ewp_shell && \
 	sed "$ s/@KERNEL_TYPE@/plain/g" ./ewp_shell > ./ewp_shell.tmp && mv ./ewp_shell.tmp ./ewp_shell
 	cat kernel >> ewp_shell  && \
+	chmod +x ./ewp_shell && \
 	echo "Success!" || \
 	echo "Failed!"
 else
-	sed -i "s/@KERNEL_TYPE@/gzip/g" ./ewp_shell && \
+	# sed -i "s/@KERNEL_TYPE@/gzip/g" ./ewp_shell && \
+	sed "$ s/@KERNEL_TYPE@/gzip/g" ./ewp_shell > ./ewp_shell.tmp && mv ./ewp_shell.tmp ./ewp_shell
 	tar czf - kernel >> ewp_shell  && \
+	chmod +x ./ewp_shell && \
 	echo "Success!" || \
 	echo "Failed!"
 fi
