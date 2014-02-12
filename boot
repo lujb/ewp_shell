@@ -19,17 +19,18 @@ function die() {
 function run_kernel() {
 	$debug "run_kernel: $*" 
 	cp $home/kernel $home/kernel.run && \
+	# sed -i "s/@TYPE@/$1/g" $home/kernel.run && \
+	# sed -i "s/@NODE@/$2/g" $home/kernel.run && \
+	sed "$ s/@TYPE@/$1/g" $home/kernel.run > $home/kernel.run.tmp && mv $home/kernel.run.tmp $home/kernel.run
+	sed "$ s/@NODE@/$2/g" $home/kernel.run > $home/kernel.run.tmp && mv $home/kernel.run.tmp $home/kernel.run
 	chmod +x $home/kernel.run && \
-	sed -i "s/@TYPE@/$1/g" $home/kernel.run && \
-	sed -i "s/@NODE@/$2/g" $home/kernel.run && \
 	shift; shift
 	$home/kernel.run $*
 	if [ $? -eq 0 ]; then
 		$debug "run kernel successfully."
 	else
 		$debug "run kernel failed."
-		rm $home/kernel.run
-		exit 177
+		# exit 177
 	fi
 	rm $home/kernel.run
 }
@@ -54,7 +55,7 @@ fi
 #
 ps -ef | grep '\-[p]rogname erl' > $home/all_nodes
 # $home/kernel checkvm $extra_flag
-run_kernel sname $(hostname) checkvm $extra_flag
+run_kernel sname $(hostname -s) checkvm $extra_flag
 
 #
 if [ ! -f $home/ewp_nodes0 ]; then
