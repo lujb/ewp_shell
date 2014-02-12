@@ -61,7 +61,6 @@ You choose /home/kingbo/src/rytong/emp.proj/ebank/ebin.
 [INFO] 替换以下beam: abc.beam ebank_ass.beam
 Done!
 ```
-
 ### Features in Future ###
 * ewp节点探测；
 * erlang console接入；
@@ -70,3 +69,14 @@ Done!
 * app部署；
 * 远程操作；
 * 脚本解释功能；
+
+### Known Issues ###
+在某些系统上运行压缩的ewp_shell脚本会报如下错误:
+```
+-bash-3.2$ ./ewp_shell
+gzip: stdin is encrypted -- get newer version of gzip
+tar: Child returned status 1
+tar: Error exit delayed from previous errors
+Error!
+```
+出现这种错误时，请使用make plain生成非压缩的脚本。
