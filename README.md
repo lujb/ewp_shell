@@ -18,9 +18,10 @@ make
 ./ewp_shell -debug
 ```
 
-### 动态更新ewp内存中的beam ###
-当前只支持向sname的ewp节点导入beam。
+### Features ###
+* 支持本地任意sname/name节点探测
 
+### 动态更新ewp内存中的beam ###
 * 运行脚本；
 * 如果当前运行有多个ewp节点，脚本将列出所有节点，并要求用户选择一个节点；
 * 接着脚本会列出所有ebin路径，并要求用户选择一个ebin路径用来保存后续导入新增的beam(不是新增的则直接覆盖)；
@@ -33,13 +34,13 @@ make
 kingbo@caught:~/src/gitrepo/ewp_shell$ ./ewp_shell 
 current running ewp nodes:
 --------------------------
-1) ebank@caught
-2) ewp@caught
+1) ebank@127.0.0.1 	(name)long name mode.
+2) ewp@caught 	(sname)short name mode.
 选择一个将导入beam的ewp节点(输入数字1~2): 1
 
-You choose ebank@caught.
+You choose ebank@127.0.0.1, type:name.
 
-当前在节点ebank@caught中的ebin路径有:
+当前在节点ebank@127.0.0.1中的ebin路径有:
 --------------------------
 1) /usr/local/lib/yaws/examples/ebin
 2) /home/kingbo/src/rytong/emp.proj/ebank/../ewp/ebin
@@ -51,7 +52,7 @@ You choose ebank@caught.
 
 You choose /home/kingbo/src/rytong/emp.proj/ebank/ebin.
 
-请输入待导入的beam文件路径(支持单个beam文件或zip/tgz压缩文件): /home/kingbo/src/rytong/emp.proj/ebank/tmp/tmp.zip
+请输入待导入的beam文件路径(支持单个beam文件或zip/tgz压缩文件): ./tmp/tmp.zip 
 [INFO] 没有新增的beam.
 [INFO] 替换以下beam: abc.beam ebank_ass.beam
 Done!
