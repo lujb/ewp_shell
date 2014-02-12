@@ -21,8 +21,8 @@ function run_kernel() {
 	cp $home/kernel $home/kernel.run && \
 	# sed -i "s/@TYPE@/$1/g" $home/kernel.run && \
 	# sed -i "s/@NODE@/$2/g" $home/kernel.run && \
-	sed "$ s/@TYPE@/$1/g" $home/kernel.run > $home/kernel.run.tmp && mv $home/kernel.run.tmp $home/kernel.run
-	sed "$ s/@NODE@/$2/g" $home/kernel.run > $home/kernel.run.tmp && mv $home/kernel.run.tmp $home/kernel.run
+	sed "s/@TYPE@/$1/g" $home/kernel.run > $home/kernel.run.tmp && mv $home/kernel.run.tmp $home/kernel.run
+	sed "s/@NODE@/$2/g" $home/kernel.run > $home/kernel.run.tmp && mv $home/kernel.run.tmp $home/kernel.run
 	chmod +x $home/kernel.run && \
 	shift; shift
 	$home/kernel.run $*
@@ -32,7 +32,7 @@ function run_kernel() {
 		$debug "run kernel failed."
 		# exit 177
 	fi
-	rm $home/kernel.run
+	# rm $home/kernel.run
 }
 
 # self-extracting
