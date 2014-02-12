@@ -10,9 +10,27 @@ else
 fi
 mkdir -p $beamdir
 
+#%global.vars%
 function die() {
 	echo "Error!";
 	exit $(($1))
+}
+
+function run_kernel() {
+	$debug "run_kernel: $*" 
+	cp $home/kernel $home/kernel.run && \
+	sed -i "s/@TYPE@/$1/g" $home/kernel.run && \
+	sed -i "s/@NODE@/$2/g" $home/kernel.run && \
+	shift; shift
+	$home/kernel.run $*
+	if [ $? -eq 0 ]; then
+		$debug "run kernel successfully."
+	else
+		$debug "run kernel failed."
+		rm $home/kernel.run
+		exit 177
+	fi
+	rm $home/kernel.run
 }
 
 # self-extracting
@@ -29,24 +47,48 @@ fi
 
 #
 ps -ef | grep '\-[p]rogname erl' > $home/all_nodes
-$home/kernel checkvm $extra_flag
+# $home/kernel checkvm $extra_flag
+run_kernel sname $(hostname) checkvm $extra_flag
 
 #
-if [ ! -f $home/ewp_nodes ]; then
+if [ ! -f $home/ewp_nodes0 ]; then
 	echo "No running ewp nodes."
 	exit 180
 fi
 
+nodes0=( $( cat $home/ewp_nodes0 ) )
+for i in $(seq 0 $((${#nodes0[@]} - 1))); do
+	IFS0=$IFS; IFS="!"; read -a array <<< "${nodes0[$i]}"; IFS=$IFS0;
+	# echo -e -n "$(($i + 1))) ${array[1]} \t"
+	IFS0=$IFS; IFS="@"; read -a array2 <<< "${array[1]}"; IFS=$IFS0;
+	run_kernel ${array[0]} "ewp_shell_test_node@${array2[1]}" testvm --node ${array[1]} --type ${array[0]} $extra_flag
+	if [ ${array[0]} = "name" ]; then
+		$debug "find a long name node."
+	else
+		$debug "find a short name mode."
+	fi
+done
+
+
 nodes=( $( cat $home/ewp_nodes ) )
 if [ $((${#nodes[@]})) -eq 1 ]; then
-	echo "Only one ewp node is running: ${nodes[$((0))]}"
-	selected_node=${nodes[$((0))]}
+	IFS0=$IFS; IFS="!"; read -a array <<< "${nodes[$i]}"; IFS=$IFS0;
+	echo "Only one ewp (${array[0]})node is running: ${array[1]}"
+	selected_node=${array[1]}
+	selected_type=${array[0]}
+	selected_host=${selected_node##*@}
 elif [ $((${#nodes[@]})) -gt 1 ]; then
 	echo "current running ewp nodes:"
 	# show ewp nodes list
 	echo "--------------------------"
 	for i in $(seq 0 $((${#nodes[@]} - 1))); do
-		echo "$(($i + 1))) ${nodes[$i]}"
+		IFS0=$IFS; IFS="!"; read -a array <<< "${nodes[$i]}"; IFS=$IFS0;
+		echo -e -n "$(($i + 1))) ${array[1]} \t"
+		if [ ${array[0]} = "name" ]; then
+			echo "(${array[0]})long name mode."
+		else
+			echo "(${array[0]})short name mode."
+		fi
 	done
 
 	# choose an ewp node
@@ -54,8 +96,11 @@ elif [ $((${#nodes[@]})) -gt 1 ]; then
 	read i; echo
 
 	if [ $i -eq $i 2>/dev/null ] && [ $i -ge 1 ] && [ $i -le $((${#nodes[@]})) ]; then
-		selected_node=${nodes[$(($i - 1))]}
-		echo "You choose $selected_node."; echo
+		IFS0=$IFS; IFS="!"; read -a array <<< "${nodes[$(($i - 1))]}"; IFS=$IFS0;
+		selected_node=${array[1]}
+		selected_type=${array[0]}
+		selected_host=${selected_node##*@}
+		echo "You choose $selected_node, type:$selected_type."; echo
 	else 
 		echo "invalid input."
 		exit 181
@@ -67,7 +112,7 @@ fi
 
 
 # choose user ebin path
-$home/kernel userebin --node $selected_node $extra_flag
+run_kernel $selected_type "ewp_shell_test_node@$selected_host" userebin --node $selected_node $extra_flag
 
 selected_ebin='undefined'
 if [ ! -f $home/user_ebin ]; then
@@ -115,16 +160,16 @@ if [ ! -z $beam ] && [ -f $beam ]; then
 		extension="${filename##*.}"
 		if [ $extension == "tar" ]; then
 			tar -zxf $beam -C $beamdir
-			$home/kernel inject --beam $beamdir --node $selected_node --ebin $selected_ebin $extra_flag
+			run_kernel $selected_type "ewp_shell_test_node@$selected_host" inject --beam $beamdir --node $selected_node --ebin $selected_ebin $extra_flag
 		else
 			echo "invalid input."
 			exit 184
 		fi
 	elif [ $extension == "zip" ]; then
 		unzip -q $beam -d $beamdir
-		$home/kernel inject --beam $beamdir --node $selected_node --ebin $selected_ebin $extra_flag
+		run_kernel $selected_type "ewp_shell_test_node@$selected_host" inject --beam $beamdir --node $selected_node --ebin $selected_ebin $extra_flag
 	elif [ $extension == "beam" ]; then
-		$home/kernel inject --beam $beam --node $selected_node --ebin $selected_ebin $extra_flag
+		run_kernel $selected_type "ewp_shell_test_node@$selected_host" inject --beam $beam --node $selected_node --ebin $selected_ebin $extra_flag
 	else
 		echo "invalid input."
 		exit 183
@@ -146,7 +191,7 @@ if [ -f $home/replace_beam ]; then
 	echo -n "[INFO] 替换以下beam: "
 	echo $(cat $home/replace_beam)
 else
-	echo "[INFO] 没有替换的beam."
+	echo "[INFO] 没有可替换的beam."
 fi
 
 # clear

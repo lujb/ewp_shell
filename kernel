@@ -1,7 +1,8 @@
 #!/usr/bin/env escript
 %% -*- erlang -*-
-%%! -smp enable -sname beam_injector -setcookie ewpcool
+%%! -smp enable -@TYPE@ @NODE@ -setcookie ewpcool
 -define(ALL_NODES, ".ewp/ewp_shell.swp/all_nodes").
+-define(EWP_NODES0, ".ewp/ewp_shell.swp/ewp_nodes0").
 -define(EWP_NODES, ".ewp/ewp_shell.swp/ewp_nodes").
 -define(USER_EBIN, ".ewp/ewp_shell.swp/user_ebin").
 -define(NEW_BEAM, ".ewp/ewp_shell.swp/new_beam").
@@ -15,6 +16,7 @@ main([Action | Options]) ->
 		debug("with Args: ~p", [O]),
 		case Action of
 			"checkvm" -> check_vm();
+			"testvm" -> test_vm(O);
 			"userebin" -> get_user_ebin_path(O);
 			"inject" -> inject(O);
 			X -> err("unknown action:~p.", [X]), throw(abort)
@@ -38,6 +40,8 @@ process_options([], Acc) ->
 	Acc;
 process_options(["--node", Node | Rest], Acc) ->
 	process_options(Rest, [{node, list_to_atom(Node)}|Acc]);
+process_options(["--type", Type | Rest], Acc) ->
+	process_options(Rest, [{type, Type}|Acc]);
 process_options(["--beam", BeamPath | Rest], Acc) ->
 	process_options(Rest, [{beampath, BeamPath}|Acc]);
 process_options(["--ebin", EbinPath| Rest], Acc) ->
@@ -53,7 +57,7 @@ inject(Options) ->
     ModName = list_to_atom(filename:basename(BeamPath, ".beam")),
     case filelib:is_dir(BeamPath) of
     	true ->
-    		Beams = filelib:wildcard(filename:join([BeamPath, "**/**/*.beam"])),
+    		Beams = filelib:wildcard(filename:join([BeamPath, "**/*.beam"])),
     		debug("beams to inject: ~p", [Beams]),
     		[inject_one_beam(Node, Ebin, X, filename:basename(X,".beam")) || X <- Beams];
     	false ->
@@ -105,11 +109,10 @@ do_inject(Node, Ebin, Mod, Bin) ->
 	case rpc:call(Node, code, load_binary, [Mod, TargetPath, Bin]) of
 		{module, Mod} ->
 			%% save result
-			{ok, [[Home]]} = init:get_argument(home),
 			ResultPath=
 				case Type of
-					new -> filename:join([Home, ?NEW_BEAM]);
-					replace -> filename:join([Home, ?REPLACE_BEAM])
+					new -> to_abspath(?NEW_BEAM);
+					replace -> to_abspath(?REPLACE_BEAM)
 				end,
 			ok = file:write_file(ResultPath, lists:concat([Mod, ".beam "]), [append]),
 			debug("inject sucessfully.");
@@ -123,7 +126,7 @@ get_user_ebin_path(Options) ->
 	AllPath = rpc:call(Node, code, get_path, []),
 	LibPath = rpc:call(Node, code, lib_dir, []),
 	Len = length(LibPath),
-	UserEbin = lists:filter(
+	UserEbin 	= lists:filter(
 		fun(X)->
 			case string:substr(X, 1, Len) of 
 				LibPath -> false;
@@ -135,12 +138,10 @@ get_user_ebin_path(Options) ->
 		fun(N, Acc)-> ["\n", N | Acc] end,
 		[], UserEbin)	,
 	Str2 = lists:concat(tl(Str)),
-	{ok, [[Home]]} = init:get_argument(home),
-	ok = file:write_file(filename:join([Home, ?USER_EBIN]), Str2).
+	ok = file:write_file(to_abspath(?USER_EBIN), Str2).
 
 check_vm() ->
-	{ok, [[Home]]} = init:get_argument(home),
-	case file:open(filename:join([Home, ?ALL_NODES]), [read]) of
+	case file:open(to_abspath(?ALL_NODES), [read]) of
 		{ok, Fd} ->
 			case check_vm_1(Fd, file:read_line(Fd), []) of
 				[] ->
@@ -148,10 +149,10 @@ check_vm() ->
 				EWPNodes ->
 					%%save ewp nodes
 					Str = lists:foldl(
-						fun(N, Acc)-> ["\n", N | Acc] end,
+						fun({T, N}, Acc)-> ["\n", lists:concat([T,"!",N]) | Acc] end,
 						[], EWPNodes)	,
 					Str2 = lists:concat(tl(Str)),
-					ok = file:write_file(filename:join([Home, ?EWP_NODES]), Str2)
+					ok = file:write_file(to_abspath(?EWP_NODES0), Str2)
 			end;
 		{error, OpenError} ->
 			err("failed to open tmp file, for:~p", [OpenError]),
@@ -177,21 +178,36 @@ parse_vm(Data) when is_list(Data) ->
 	debug("parse line:~p", [Data]),
 	case re:run(Data, ".*?\\s-(s?name)\\s(.*?)\\s", [{capture, [1,2], list}]) of
 		{match, [Type, Name]} ->
-			case ping(Type, Name) of
-				{pong, EWPNode} ->
-					debug("find: ~p", [EWPNode]),
-					{ok, EWPNode};
-				{pang, _} ->
-					not_found
-			end;
-		_ ->
+			{ok, {Type, name_to_node(Name)}};
+			% case ping(Type, Name) of
+			% 	{pong, EWPNode} ->
+			% 		debug("find: ~p", [EWPNode]),
+			% 		{ok, EWPNode};
+			% 	{pang, _} ->
+			% 		not_found
+			% end;
+		_X ->
+			% debug("match :~p.", [X]),
 			pass
 	end.
 
-ping("sname", Name) ->
-	{ok, HostName} = inet:gethostname(),
-	Node = list_to_atom(lists:concat([Name,'@',HostName])),
-	{net_adm:ping(Node), Node}.
+test_vm(Options) ->
+	Node = o(node, Options),
+	Type = o(type, Options),
+	debug("test vm Node;~p", [Node]),
+	case ping(Node) of
+		pong ->
+			Data = lists:concat([Type, "!", Node, "\n"]),
+			ok = file:write_file(to_abspath(?EWP_NODES), Data, [append]);
+		pang -> pass
+	end.
+
+ping(Node) when is_list(Node) ->
+	ping(list_to_atom(Node));
+ping(Node) ->
+	Echo = net_adm:ping(Node),
+	debug("ping node(~p):~p.", [Node, Echo]),
+	Echo.
 
 o(Key, PropLists) ->
 	case proplists:get_value(Key, PropLists) of
@@ -220,6 +236,17 @@ write_beam(Node, Path, Mod, Bin) ->
 			err("failed to copy beam:~p, for:~p.", [Mod, CopyError]),
 			throw(abort)
 	end.
+
+name_to_node(Name) ->
+	{ok, HostName} = inet:gethostname(),
+	case string:chr(Name, $@) of
+		0 -> list_to_atom(lists:concat([Name,'@',HostName]));
+		_ -> list_to_atom(Name)
+	end.
+
+to_abspath(Path) ->
+	{ok, [[Home]]} = init:get_argument(home),
+	filename:join([Home, Path]).
 
 usage() ->
     io:format("usage: kernel ACTION [Options]\n"),
