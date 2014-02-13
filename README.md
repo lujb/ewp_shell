@@ -62,7 +62,7 @@ You choose /home/kingbo/src/rytong/emp.proj/ebank/ebin.
 Done!
 ```
 ### Features in Future ###
-* ewp节点探测；
+* 外部ewp节点探测；
 * erlang console接入；
 * ewp集群节点状态管理；
 * app的启动/关闭的支持；
