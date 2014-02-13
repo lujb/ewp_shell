@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # init environment
 home="$HOME/.ewp/ewp_shell.swp"
@@ -54,7 +54,6 @@ fi
 
 #
 ps -ef | grep '\-[p]rogname erl' > $home/all_nodes
-# $home/kernel checkvm $extra_flag
 run_kernel sname $(hostname -s) checkvm $extra_flag
 
 #
@@ -181,7 +180,9 @@ if [ ! -z $beam ] && [ -f $beam ]; then
 		echo "invalid input."
 		exit 183
 	fi
-else
+elif [ -d $beam ]; then
+		run_kernel $selected_type "ewp_shell_test_node@$selected_host" inject --beam $beam --node $selected_node --ebin $selected_ebin $extra_flag
+else 
 	echo "invalid input."
 	exit 182
 fi
