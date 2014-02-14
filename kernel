@@ -57,7 +57,8 @@ inject(Options) ->
     ModName = list_to_atom(filename:basename(BeamPath, ".beam")),
     case filelib:is_dir(BeamPath) of
     	true ->
-    		Beams = filelib:wildcard(filename:join([BeamPath, "**/*.beam"])),
+    		Fun = fun(X, Acc) -> [X|Acc] end,
+	    	Beams = filelib:fold_files(BeamPath, ".*\\.beam", true, Fun, []),
     		debug("beams to inject: ~p", [Beams]),
     		[inject_one_beam(Node, Ebin, X, filename:basename(X,".beam")) || X <- Beams];
     	false ->
