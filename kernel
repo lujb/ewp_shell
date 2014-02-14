@@ -8,28 +8,28 @@
 -define(NEW_BEAM, ".ewp/ewp_shell.swp/new_beam").
 -define(REPLACE_BEAM, ".ewp/ewp_shell.swp/replace_beam").
 main([Action | Options]) ->
-	try
-		Options2 = check_debug_flag(Options),
-		O = process_options(Options2, []),
-		% Execute Action
-		debug("exec Action: ~p", [Action]),
-		debug("with Args: ~p", [O]),
-		case Action of
-			"checkvm" -> check_vm();
-			"testvm" -> test_vm(O);
-			"userebin" -> get_user_ebin_path(O);
-			"inject" -> inject(O);
-			X -> err("unknown action:~p.", [X]), throw(abort)
-		end
-	catch
-    	throw:abort ->
-    		io:format("Abort!~n"),
-    		halt(190);
+    try
+        Options2 = check_debug_flag(Options),
+        O = process_options(Options2, []),
+        % Execute Action
+        debug("exec Action: ~p", [Action]),
+        debug("with Args: ~p", [O]),
+        case Action of
+            "checkvm" -> check_vm();
+            "testvm" -> test_vm(O);
+            "userebin" -> get_user_ebin_path(O);
+            "inject" -> inject(O);
+            X -> err("unknown action:~p.", [X]), throw(abort)
+        end
+    catch
+        throw:abort ->
+            io:format("Abort!~n"),
+            halt(190);
         Type:Why ->
-        	debug("trace: ~p.", [erlang:get_stacktrace()]),
-        	err("type is:~p, reason is:~p.", [Type, Why]),
+            debug("trace: ~p.", [erlang:get_stacktrace()]),
+            err("type is:~p, reason is:~p.", [Type, Why]),
             % usage(),
-    		halt(191)
+            halt(191)
     end;
 
 main(_) ->
@@ -37,231 +37,231 @@ main(_) ->
 
 
 process_options([], Acc) ->
-	Acc;
+    Acc;
 process_options(["--node", Node | Rest], Acc) ->
-	process_options(Rest, [{node, list_to_atom(Node)}|Acc]);
+    process_options(Rest, [{node, list_to_atom(Node)}|Acc]);
 process_options(["--type", Type | Rest], Acc) ->
-	process_options(Rest, [{type, Type}|Acc]);
+    process_options(Rest, [{type, Type}|Acc]);
 process_options(["--beam", BeamPath | Rest], Acc) ->
-	process_options(Rest, [{beampath, BeamPath}|Acc]);
+    process_options(Rest, [{beampath, BeamPath}|Acc]);
 process_options(["--ebin", EbinPath| Rest], Acc) ->
-	process_options(Rest, [{ebin, EbinPath}|Acc]);
+    process_options(Rest, [{ebin, EbinPath}|Acc]);
 process_options([X|_Rest], _Acc) ->
-	err("unknown option: ~p.", [X]),
-	throw(abort).
+    err("unknown option: ~p.", [X]),
+    throw(abort).
 
 inject(Options) ->
-	BeamPath = o(beampath, Options),
-	Node = o(node, Options),
-	Ebin = o(ebin, Options),
+    BeamPath = o(beampath, Options),
+    Node = o(node, Options),
+    Ebin = o(ebin, Options),
     ModName = list_to_atom(filename:basename(BeamPath, ".beam")),
     case filelib:is_dir(BeamPath) of
-    	true ->
-    		Fun = fun(X, Acc) -> [X|Acc] end,
-	    	Beams = filelib:fold_files(BeamPath, ".*\\.beam", true, Fun, []),
-    		debug("beams to inject: ~p", [Beams]),
-    		[inject_one_beam(Node, Ebin, X, filename:basename(X,".beam")) || X <- Beams];
-    	false ->
-    		inject_one_beam(Node, Ebin, BeamPath, ModName)
+        true ->
+            Fun = fun(X, Acc) -> [X|Acc] end,
+            Beams = filelib:fold_files(BeamPath, ".*\\.beam", true, Fun, []),
+            debug("beams to inject: ~p", [Beams]),
+            [inject_one_beam(Node, Ebin, X, filename:basename(X,".beam")) || X <- Beams];
+        false ->
+            inject_one_beam(Node, Ebin, BeamPath, ModName)
     end.
 
 inject_one_beam(Node, Ebin, BeamPath, ModName) when is_list(ModName) ->
-	inject_one_beam(Node, Ebin, BeamPath, list_to_atom(ModName));
+    inject_one_beam(Node, Ebin, BeamPath, list_to_atom(ModName));
 inject_one_beam(Node, Ebin, BeamPath, ModName) ->
     debug("inject beam:~p on node:~p as:~p.", [BeamPath, Node, ModName]),
     case file:read_file(BeamPath) of
-    	{ok, BeamBin} ->
-    		case code:load_binary(ModName, BeamPath, BeamBin) of
-    			{module, ModName} ->
-    				debug("file can be loaded."),
-    				do_inject(Node, Ebin, ModName, BeamBin);
-    			{error, LoadError} ->
-    				err("file cannot be loaded, for:~p", [LoadError]),
-    				throw(abort)
-    		end;
-    	_ ->
-    		err("failed to read beam binary.")
+        {ok, BeamBin} ->
+            case code:load_binary(ModName, BeamPath, BeamBin) of
+                {module, ModName} ->
+                    debug("file can be loaded."),
+                    do_inject(Node, Ebin, ModName, BeamBin);
+                {error, LoadError} ->
+                    err("file cannot be loaded, for:~p", [LoadError]),
+                    throw(abort)
+            end;
+        _ ->
+            err("failed to read beam binary.")
     end.
 
 do_inject(Node, Ebin, Mod, Bin) ->
-	% Tag = lists:concat(["injected_by_ewpshell@", timestamp()]),
-	{TargetPath, Type} = 
-		case rpc:call(Node, code, which, [Mod]) of
-			non_existing ->
-				case Ebin of
-					"undefined" ->
-						warn("*Ram_copy* for newly added beam:~p.", [Mod]),
-						{"undefined", new};
-					_ ->
-						debug("*Disc_copy* for newly aded beam:~p.", [Mod]),
-						{filename:join([Ebin, lists:concat([Mod, ".beam"])]), new}
-				end;
-			OrigPath ->
-				debug("*Disc_copy* for old beam:~p.", [Mod]),
-				{OrigPath, replace}
-		end,
-	write_beam(Node, TargetPath, Mod, Bin),
-	case rpc:call(Node, code, soft_purge, [Mod]) of
-		true ->
-			debug("success to soft purge the old beam(~p) in RAM.", [Mod]);
-		false ->
-			err("failed to soft purge the old beam(~p) in RAM.", [Mod])
-	end,
-	case rpc:call(Node, code, load_binary, [Mod, TargetPath, Bin]) of
-		{module, Mod} ->
-			%% save result
-			ResultPath=
-				case Type of
-					new -> to_abspath(?NEW_BEAM);
-					replace -> to_abspath(?REPLACE_BEAM)
-				end,
-			ok = file:write_file(ResultPath, lists:concat([Mod, ".beam "]), [append]),
-			debug("inject sucessfully.");
-		{error, LoadError} ->
-			err("beam cannot be injected, for:~p", [LoadError]),
-			throw(abort)
-	end.
+    % Tag = lists:concat(["injected_by_ewpshell@", timestamp()]),
+    {TargetPath, Type} = 
+        case rpc:call(Node, code, which, [Mod]) of
+            non_existing ->
+                case Ebin of
+                    "undefined" ->
+                        warn("*Ram_copy* for newly added beam:~p.", [Mod]),
+                        {"undefined", new};
+                    _ ->
+                        debug("*Disc_copy* for newly aded beam:~p.", [Mod]),
+                        {filename:join([Ebin, lists:concat([Mod, ".beam"])]), new}
+                end;
+            OrigPath ->
+                debug("*Disc_copy* for old beam:~p.", [Mod]),
+                {OrigPath, replace}
+        end,
+    write_beam(Node, TargetPath, Mod, Bin),
+    case rpc:call(Node, code, soft_purge, [Mod]) of
+        true ->
+            debug("success to soft purge the old beam(~p) in RAM.", [Mod]);
+        false ->
+            err("failed to soft purge the old beam(~p) in RAM.", [Mod])
+    end,
+    case rpc:call(Node, code, load_binary, [Mod, TargetPath, Bin]) of
+        {module, Mod} ->
+            %% save result
+            ResultPath=
+                case Type of
+                    new -> to_abspath(?NEW_BEAM);
+                    replace -> to_abspath(?REPLACE_BEAM)
+                end,
+            ok = file:write_file(ResultPath, lists:concat([Mod, ".beam "]), [append]),
+            debug("inject sucessfully.");
+        {error, LoadError} ->
+            err("beam cannot be injected, for:~p", [LoadError]),
+            throw(abort)
+    end.
 
 get_user_ebin_path(Options) ->
-	Node = o(node, Options),
-	AllPath = rpc:call(Node, code, get_path, []),
-	LibPath = rpc:call(Node, code, lib_dir, []),
-	Len = length(LibPath),
-	UserEbin 	= lists:filter(
-		fun(X)->
-			case string:substr(X, 1, Len) of 
-				LibPath -> false;
-				_ -> true
-			end
-		end, AllPath),
-	%%save user ebin path 
-	Str = lists:foldl(
-		fun(N, Acc)-> ["\n", N | Acc] end,
-		[], UserEbin)	,
-	Str2 = lists:concat(tl(Str)),
-	ok = file:write_file(to_abspath(?USER_EBIN), Str2).
+    Node = o(node, Options),
+    AllPath = rpc:call(Node, code, get_path, []),
+    LibPath = rpc:call(Node, code, lib_dir, []),
+    Len = length(LibPath),
+    UserEbin    = lists:filter(
+        fun(X)->
+            case string:substr(X, 1, Len) of 
+                LibPath -> false;
+                _ -> true
+            end
+        end, AllPath),
+    %%save user ebin path 
+    Str = lists:foldl(
+        fun(N, Acc)-> ["\n", N | Acc] end,
+        [], UserEbin)   ,
+    Str2 = lists:concat(tl(Str)),
+    ok = file:write_file(to_abspath(?USER_EBIN), Str2).
 
 check_vm() ->
-	case file:open(to_abspath(?ALL_NODES), [read]) of
-		{ok, Fd} ->
-			case check_vm_1(Fd, file:read_line(Fd), []) of
-				[] ->
-					throw(abort);
-				EWPNodes ->
-					%%save ewp nodes
-					Str = lists:foldl(
-						fun({T, N}, Acc)-> ["\n", lists:concat([T,"!",N]) | Acc] end,
-						[], EWPNodes)	,
-					Str2 = lists:concat(tl(Str)),
-					ok = file:write_file(to_abspath(?EWP_NODES0), Str2)
-			end;
-		{error, OpenError} ->
-			err("failed to open tmp file, for:~p", [OpenError]),
-			throw(abort)
-	end.
+    case file:open(to_abspath(?ALL_NODES), [read]) of
+        {ok, Fd} ->
+            case check_vm_1(Fd, file:read_line(Fd), []) of
+                [] ->
+                    throw(abort);
+                EWPNodes ->
+                    %%save ewp nodes
+                    Str = lists:foldl(
+                        fun({T, N}, Acc)-> ["\n", lists:concat([T,"!",N]) | Acc] end,
+                        [], EWPNodes)   ,
+                    Str2 = lists:concat(tl(Str)),
+                    ok = file:write_file(to_abspath(?EWP_NODES0), Str2)
+            end;
+        {error, OpenError} ->
+            err("failed to open tmp file, for:~p", [OpenError]),
+            throw(abort)
+    end.
 
 check_vm_1(Fd, eof, Acc) ->
-	file:close(Fd),
-	Acc;
+    file:close(Fd),
+    Acc;
 check_vm_1(Fd, {error, ReadLineError}, _Acc) ->
-	file:close(Fd),
-	err("failed to read line, for:~p", [ReadLineError]),
-	throw(abort);
+    file:close(Fd),
+    err("failed to read line, for:~p", [ReadLineError]),
+    throw(abort);
 check_vm_1(Fd, {ok, Data}, Acc) ->
-	Acc2 = 
-		case parse_vm(Data) of
-			{ok, EWPNode} -> [EWPNode | Acc];
-			_ -> Acc
-		end,
-	check_vm_1(Fd, file:read_line(Fd), Acc2).
+    Acc2 = 
+        case parse_vm(Data) of
+            {ok, EWPNode} -> [EWPNode | Acc];
+            _ -> Acc
+        end,
+    check_vm_1(Fd, file:read_line(Fd), Acc2).
 
 parse_vm(Data) when is_list(Data) ->
-	debug("parse line:~p", [Data]),
-	case re:run(Data, ".*?\\s-(s?name)\\s(.*?)\\s", [{capture, [1,2], list}]) of
-		{match, [Type, Name]} ->
-			{ok, {Type, name_to_node(Name)}};
-			% case ping(Type, Name) of
-			% 	{pong, EWPNode} ->
-			% 		debug("find: ~p", [EWPNode]),
-			% 		{ok, EWPNode};
-			% 	{pang, _} ->
-			% 		not_found
-			% end;
-		_X ->
-			% debug("match :~p.", [X]),
-			pass
-	end.
+    debug("parse line:~p", [Data]),
+    case re:run(Data, ".*?\\s-(s?name)\\s(.*?)\\s", [{capture, [1,2], list}]) of
+        {match, [Type, Name]} ->
+            {ok, {Type, name_to_node(Name)}};
+            % case ping(Type, Name) of
+            %   {pong, EWPNode} ->
+            %       debug("find: ~p", [EWPNode]),
+            %       {ok, EWPNode};
+            %   {pang, _} ->
+            %       not_found
+            % end;
+        _X ->
+            % debug("match :~p.", [X]),
+            pass
+    end.
 
 test_vm(Options) ->
-	Node = o(node, Options),
-	Type = o(type, Options),
-	debug("test vm Node;~p", [Node]),
-	case ping(Node) of
-		pong ->
-			Data = lists:concat([Type, "!", Node, "\n"]),
-			ok = file:write_file(to_abspath(?EWP_NODES), Data, [append]);
-		pang -> pass
-	end.
+    Node = o(node, Options),
+    Type = o(type, Options),
+    debug("test vm Node;~p", [Node]),
+    case ping(Node) of
+        pong ->
+            Data = lists:concat([Type, "!", Node, "\n"]),
+            ok = file:write_file(to_abspath(?EWP_NODES), Data, [append]);
+        pang -> pass
+    end.
 
 ping(Node) when is_list(Node) ->
-	ping(list_to_atom(Node));
+    ping(list_to_atom(Node));
 ping(Node) ->
-	Echo = net_adm:ping(Node),
-	debug("ping node(~p):~p.", [Node, Echo]),
-	Echo.
+    Echo = net_adm:ping(Node),
+    debug("ping node(~p):~p.", [Node, Echo]),
+    Echo.
 
 o(Key, PropLists) ->
-	case proplists:get_value(Key, PropLists) of
-		undefined -> err("~p is needed.", [Key]),throw(abort);
-		X -> X
-	end.
+    case proplists:get_value(Key, PropLists) of
+        undefined -> err("~p is needed.", [Key]),throw(abort);
+        X -> X
+    end.
 
 check_debug_flag(Options) when is_list(Options) ->
-	case lists:member("-debug", Options) of
-		true ->
-			erlang:put(debug, defined),
-			lists:filter(
-				fun(X) when X /= "-debug" -> true;
-				   (_) -> false
-				end, Options);
-		false -> 
-			Options
-	end.
+    case lists:member("-debug", Options) of
+        true ->
+            erlang:put(debug, defined),
+            lists:filter(
+                fun(X) when X /= "-debug" -> true;
+                   (_) -> false
+                end, Options);
+        false -> 
+            Options
+    end.
 
 write_beam(Node, Path, Mod, Bin) ->
-	debug("copy beam(~p) to path:~p.", [Mod, Path]),
-	case rpc:call(Node, file, write_file, [Path, Bin]) of
-		ok ->
-			debug("copy beam to path:~p sucessfully.", [Path]);
-		{error, CopyError} ->
-			err("failed to copy beam:~p, for:~p.", [Mod, CopyError]),
-			throw(abort)
-	end.
+    debug("copy beam(~p) to path:~p.", [Mod, Path]),
+    case rpc:call(Node, file, write_file, [Path, Bin]) of
+        ok ->
+            debug("copy beam to path:~p sucessfully.", [Path]);
+        {error, CopyError} ->
+            err("failed to copy beam:~p, for:~p.", [Mod, CopyError]),
+            throw(abort)
+    end.
 
 name_to_node(Name) ->
-	{ok, HostName} = inet:gethostname(),
-	case string:chr(Name, $@) of
-		0 -> list_to_atom(lists:concat([Name,'@',HostName]));
-		_ -> list_to_atom(Name)
-	end.
+    {ok, HostName} = inet:gethostname(),
+    case string:chr(Name, $@) of
+        0 -> list_to_atom(lists:concat([Name,'@',HostName]));
+        _ -> list_to_atom(Name)
+    end.
 
 to_abspath(Path) ->
-	{ok, [[Home]]} = init:get_argument(home),
-	filename:join([Home, Path]).
+    {ok, [[Home]]} = init:get_argument(home),
+    filename:join([Home, Path]).
 
 usage() ->
     io:format("usage: kernel ACTION [Options]\n"),
     halt(1).
 
 debug(F) ->
-	debug(F, []).
+    debug(F, []).
 debug(F, A) ->
-	case erlang:get(debug) of
-		defined ->
-			io:format("[DEBUG]\t"++F++"\n", A);
-		_ ->
-			pass
-	end.
+    case erlang:get(debug) of
+        defined ->
+            io:format("[DEBUG]\t"++F++"\n", A);
+        _ ->
+            pass
+    end.
 % warn(F) -> warn(F, []).
 warn(F, A) -> io:format("[WARNING]\t"++F++"\n", A).
 err(F) -> err(F, []).
